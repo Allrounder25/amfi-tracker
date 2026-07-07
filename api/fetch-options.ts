@@ -1,7 +1,3 @@
-export const config = {
-  runtime: 'edge', // Edge functions are ultra-fast and perfect for simple fetch/regex tasks
-};
-
 export default async function handler(req: Request) {
   if (req.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });

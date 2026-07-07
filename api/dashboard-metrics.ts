@@ -1,5 +1,5 @@
 // api/dashboard-metrics.ts
-import { getDb } from "./db";
+import { getDb } from "./db.js";
 
 export default async function handler(req: Request) {
   if (req.method !== 'GET' && req.method !== 'POST') {

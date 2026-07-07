@@ -1,5 +1,5 @@
 // api/reset-db.ts
-import { getDb } from "./db";
+import { getDb } from "./db.js";
 
 export default async function handler(req: Request) {
   if (req.method !== 'POST') {
