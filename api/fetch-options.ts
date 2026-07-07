@@ -1,6 +1,6 @@
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
@@ -17,10 +17,8 @@ export default async function handler(req: Request) {
 
     const html = await response.text();
 
-    // Regex to extract dropdown blocks
     const mfMatch = html.match(/<select[^>]*?ddlMF[^>]*>([\s\S]*?)<\/select>/i);
     const tpMatch = html.match(/<select[^>]*?ddlType[^>]*>([\s\S]*?)<\/select>/i);
-
     const optionRegex = /<option[^>]*?value="([^"]*)"[^>]*>([^<]+)<\/option>/gi;
 
     const extractOptions = (htmlBlock: string | undefined) => {
@@ -35,27 +33,15 @@ export default async function handler(req: Request) {
       return options;
     };
 
-    const mfOptions = extractOptions(mfMatch?.[1]);
-    const tpOptions = extractOptions(tpMatch?.[1]);
-
-    return new Response(
-      JSON.stringify({
-        source: "live",
-        mf: mfOptions,
-        tp: tpOptions,
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 's-maxage=3600, stale-while-revalidate', // Cache for 1 hour to save Vercel usage
-        },
-      }
-    );
-  } catch (error: any) {
-    return new Response(JSON.stringify({ source: "error", message: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
+    // Setting cache headers for Node.js
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    
+    return res.status(200).json({
+      source: "live",
+      mf: extractOptions(mfMatch?.[1]),
+      tp: extractOptions(tpMatch?.[1]),
     });
+  } catch (error: any) {
+    return res.status(500).json({ source: "error", message: error.message });
   }
 }

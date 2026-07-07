@@ -1,23 +1,20 @@
 import { getDb } from "./db.js";
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
-    const { fromDate, toDate, mf, tp } = await req.json();
+    const { fromDate, toDate, mf, tp } = req.body;
     const client = getDb();
 
-    // Constructing filters dynamically for our multi-select filters
     let filterClauses = "";
     const args: any[] = [toDate, fromDate];
 
-    // If houses are selected, filter by schema text matching
     if (mf && mf.length > 0) {
       const condition = mf.map(() => "scheme_name LIKE ?").join(" OR ");
       filterClauses += ` AND (${condition})`;
-      // Assuming your codes look for simple prefix mappings or text identifiers
       mf.forEach((val: string) => args.push(`%${val}%`));
     }
 
@@ -66,15 +63,9 @@ export default async function handler(req: Request) {
       };
     });
 
-    return new Response(JSON.stringify(results), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return res.status(200).json(results);
 
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return res.status(500).json({ error: error.message });
   }
 }
