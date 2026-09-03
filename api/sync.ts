@@ -1,6 +1,5 @@
 import { getDb } from "./db.js";
 
-// Extend maximum execution duration on Vercel (up to 60s depending on plan)
 export const maxDuration = 60;
 
 export default async function handler(req: any, res: any) {
@@ -81,10 +80,17 @@ export default async function handler(req: any, res: any) {
         const rawNav = parts[4];
         const rawDate = parts[7];
 
-        if (rawNav && rawNav !== "N.A.") {
-          const navValue = parseFloat(rawNav);
-          const dateParts = rawDate.split("-");
+        if (rawNav && rawNav !== "N.A." && rawNav !== "-") {
+          // Remove commas and sanitize float parsing
+          const sanitizedNav = rawNav.replace(/,/g, '').trim();
+          const navValue = parseFloat(sanitizedNav);
           
+          // Ensure navValue is a valid finite number before inserting into Turso
+          if (!Number.isFinite(navValue)) {
+            continue;
+          }
+
+          const dateParts = rawDate.split("-");
           if (dateParts.length === 3 && monthsMap[dateParts[1]]) {
             const isoDate = `${dateParts[2]}-${monthsMap[dateParts[1]]}-${dateParts[0].padStart(2, '0')}`;
             
@@ -103,8 +109,7 @@ export default async function handler(req: any, res: any) {
 
     console.log(`[Turso Sync] Inserting ${insertStatements.length} valid statements in chunked batches...`);
 
-    // Chunk statements into batches of 500 to stay under HTTP payload limits
-    const BATCH_SIZE = 500;
+    const BATCH_SIZE = 1000;
     for (let i = 0; i < insertStatements.length; i += BATCH_SIZE) {
       const chunk = insertStatements.slice(i, i + BATCH_SIZE);
       await client.batch(chunk, "write");
