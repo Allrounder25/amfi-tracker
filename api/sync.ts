@@ -6,7 +6,11 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { fromDate, toDate, mf, tp } = req.body;
+    const { fromDate, toDate, mf, tp } = req.body || {};
+    
+    if (!fromDate || !toDate) {
+      return res.status(400).json({ error: "Missing required date fields in request body." });
+    }
 
     const formatToAmfiDate = (isoString: string) => {
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -19,13 +23,45 @@ export default async function handler(req: any, res: any) {
 
     const amfiUrl = `https://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx?mf=${mf || ''}&tp=${tp || ''}&frmdt=${amfiFrom}&todt=${amfiTo}`;
     
+    console.log(`[Sync Debug] Initiating request to: ${amfiUrl}`);
+    const fetchStart = Date.now();
+    
     const response = await fetch(amfiUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" }
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+      }
     });
 
-    if (!response.ok) throw new Error(`AMFI Portal down: ${response.status}`);
+    const fetchDuration = Date.now() - fetchStart;
+    console.log(`[Sync Debug] Received status ${response.status} in ${fetchDuration}ms`);
+
     const text = await response.text();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: `AMFI Portal rejected the request (Status ${response.status})`,
+        debug: {
+          url: amfiUrl,
+          durationMs: fetchDuration,
+          responsePreview: text.substring(0, 500)
+        }
+      });
+    }
+
+    if (text.toLowerCase().includes("<html") && !text.includes(";")) {
+      return res.status(500).json({
+        error: "AMFI returned an HTML page instead of CSV data. The request was likely blocked.",
+        debug: {
+          url: amfiUrl,
+          durationMs: fetchDuration,
+          responsePreview: text.substring(0, 500)
+        }
+      });
+    }
+
     const lines = text.split(/\r?\n/);
+    console.log(`[Sync Debug] Successfully downloaded ${lines.length} lines of NAV data.`);
 
     const client = getDb();
     
@@ -80,6 +116,9 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ rows_added: rowsAdded, summary });
 
   } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ 
+      error: error.message,
+      debug: { stack: error.stack }
+    });
   }
 }
