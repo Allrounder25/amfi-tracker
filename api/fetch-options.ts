@@ -10,19 +10,24 @@ export default async function handler(req: any, res: any) {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
     });
+      
+    console.log("AMFI Response Status:", response.status);
 
     if (!response.ok) {
       throw new Error(`AMFI server responded with status: ${response.status}`);
     }
 
     const html = await response.text();
+        
+    console.log("AMFI HTML Preview:", html.substring(0, 500));
 
     const mfMatch = html.match(/<select[^>]*?ddlMF[^>]*>([\s\S]*?)<\/select>/i);
     const tpMatch = html.match(/<select[^>]*?ddlType[^>]*>([\s\S]*?)<\/select>/i);
-    const optionRegex = /<option[^>]*?value="([^"]*)"[^>]*>([^<]+)<\/option>/gi;
+    
 
     const extractOptions = (htmlBlock: string | undefined) => {
       if (!htmlBlock) return [];
+      const optionRegex = /<option[^>]*?value="([^"]*)"[^>]*>([^<]+)<\/option>/gi;
       const options = [];
       let match;
       while ((match = optionRegex.exec(htmlBlock)) !== null) {
@@ -42,6 +47,7 @@ export default async function handler(req: any, res: any) {
       tp: extractOptions(tpMatch?.[1]),
     });
   } catch (error: any) {
+    console.error("Fetch Options Exception:", error);
     return res.status(500).json({ source: "error", message: error.message });
   }
 }
