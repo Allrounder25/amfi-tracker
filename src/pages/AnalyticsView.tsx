@@ -33,7 +33,7 @@ export default function AnalyticsView() {
   const [showLineChart, setShowLineChart] = useState(true);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
-  const [visibleCols, setVisibleCols] = useState({ w1: false, m1: true, m3: false, m6: true, y1: true, y3: false, y5: false });
+  const [visibleCols, setVisibleCols] = useState({ w1: false, m1: false, m3: false, m6: false, y1: false, y3: false, y5: false });
 
   const [mfOptions, setMfOptions] = useState<DropdownOption[]>([]);
   const [tpOptions, setTpOptions] = useState<DropdownOption[]>([]);
@@ -42,6 +42,21 @@ export default function AnalyticsView() {
   const [hasSearched, setHasSearched] = useState(false);
 
   const isSyncActive = localStorage.getItem("amfi_sync_recovery") !== null;
+
+  // Helper: Auto-detect available return data and toggle columns
+  const autoDetectColumns = (fundData: FundPerformance[]) => {
+    const newCols = { w1: false, m1: false, m3: false, m6: false, y1: false, y3: false, y5: false };
+    fundData.forEach(fund => {
+      if (fund.return_1w && fund.return_1w !== "N/A") newCols.w1 = true;
+      if (fund.return_1m && fund.return_1m !== "N/A") newCols.m1 = true;
+      if (fund.return_3m && fund.return_3m !== "N/A") newCols.m3 = true;
+      if (fund.return_6m && fund.return_6m !== "N/A") newCols.m6 = true;
+      if (fund.return_1y && fund.return_1y !== "N/A") newCols.y1 = true;
+      if (fund.return_3y && fund.return_3y !== "N/A") newCols.y3 = true;
+      if (fund.return_5y && fund.return_5y !== "N/A") newCols.y5 = true;
+    });
+    setVisibleCols(newCols);
+  };
 
   useEffect(() => {
     async function initFilters() {
@@ -57,6 +72,7 @@ export default function AnalyticsView() {
           setToDate(config.analytics_filters.to || "");
           if (config.analytics_cache && config.analytics_cache.length > 0) {
             setData(config.analytics_cache);
+            autoDetectColumns(config.analytics_cache);
             setHasSearched(true);
           }
         }
@@ -79,6 +95,7 @@ export default function AnalyticsView() {
       if (!response.ok) throw new Error("Failed to fetch analytical data");
       const results = await response.json();
       setData(results);
+      autoDetectColumns(results);
     } catch (error) {
       setData([]);
     } finally {
@@ -201,7 +218,7 @@ export default function AnalyticsView() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-h-screen overflow-hidden p-4 bg-gray-50/50 gap-3">
+    <div className="flex flex-col h-screen overflow-hidden px-2 py-3 bg-gray-50/50 gap-2">
       
       {isSyncActive && (
         <div className="absolute inset-0 z-40 bg-white/60 backdrop-blur-sm flex items-center justify-center rounded-lg">
@@ -299,11 +316,11 @@ export default function AnalyticsView() {
       )}
 
       {/* MAIN WORKSPACE SPLIT (Zero Page Overflow) */}
-      <div className="flex-1 flex flex-col xl:flex-row gap-3 min-h-0 overflow-y-auto pr-1">
+      <div className="flex-1 flex flex-col xl:flex-row gap-3 min-h-0 overflow-hidden pr-1">
         
         {/* TABLE VIEW */}
         {showTable && (
-          <div className={`bg-white rounded-lg border border-gray-200 shadow-2xs overflow-hidden flex flex-col ${showBarChart || showLineChart ? 'xl:w-1/2 min-h-[280px]' : 'w-full'}`}>
+          <div className={`bg-white rounded-lg border border-gray-200 shadow-2xs overflow-hidden flex flex-col ${showBarChart || showLineChart ? 'xl:w-1/2 min-h-0' : 'w-full'}`}>
             <div className="overflow-auto flex-1">
               <table className="w-full text-left text-xs text-gray-700">
                 <thead className="text-[11px] text-gray-500 uppercase bg-gray-50 border-b border-gray-200 sticky top-0 z-10 font-semibold">
@@ -325,16 +342,16 @@ export default function AnalyticsView() {
                   : isLoading ? (<tr><td colSpan={10} className="p-8 text-center animate-pulse text-gray-400 font-sans">Fetching results...</td></tr>) 
                   : data.map(fund => (
                     <tr key={fund.scheme_code} className="hover:bg-gray-50/80">
-                      <td className="px-3 py-1.5 text-gray-400">{fund.scheme_code}</td>
-                      <td className="px-3 py-1.5 font-sans font-medium text-gray-900 truncate max-w-[200px]" title={fund.scheme_name}>{fund.scheme_name}</td>
-                      <td className="px-3 py-1.5 font-semibold text-gray-800">{"\u20B9"}{fund.current_nav.toFixed(2)}</td>
-                      {visibleCols.w1 && <td className={`px-3 py-1.5 text-right ${fund.return_1w.startsWith("-") ? "text-red-600" : fund.return_1w === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_1w}</td>}
-                      {visibleCols.m1 && <td className={`px-3 py-1.5 text-right ${fund.return_1m.startsWith("-") ? "text-red-600" : fund.return_1m === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_1m}</td>}
-                      {visibleCols.m3 && <td className={`px-3 py-1.5 text-right ${fund.return_3m.startsWith("-") ? "text-red-600" : fund.return_3m === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_3m}</td>}
-                      {visibleCols.m6 && <td className={`px-3 py-1.5 text-right ${fund.return_6m.startsWith("-") ? "text-red-600" : fund.return_6m === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_6m}</td>}
-                      {visibleCols.y1 && <td className={`px-3 py-1.5 text-right ${fund.return_1y.startsWith("-") ? "text-red-600" : fund.return_1y === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_1y}</td>}
-                      {visibleCols.y3 && <td className={`px-3 py-1.5 text-right ${fund.return_3y.startsWith("-") ? "text-red-600" : fund.return_3y === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_3y}</td>}
-                      {visibleCols.y5 && <td className={`px-3 py-1.5 text-right ${fund.return_5y.startsWith("-") ? "text-red-600" : fund.return_5y === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_5y}</td>}
+                      <td className="px-3 py-2 text-gray-400">{fund.scheme_code}</td>
+                      <td className="px-3 py-2 font-sans font-medium text-gray-900 whitespace-normal min-w-[200px]">{fund.scheme_name}</td>
+                      <td className="px-3 py-2 font-semibold text-gray-800">{"\u20B9"}{fund.current_nav.toFixed(2)}</td>
+                      {visibleCols.w1 && <td className={`px-3 py-2 text-right ${fund.return_1w.startsWith("-") ? "text-red-600" : fund.return_1w === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_1w}</td>}
+                      {visibleCols.m1 && <td className={`px-3 py-2 text-right ${fund.return_1m.startsWith("-") ? "text-red-600" : fund.return_1m === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_1m}</td>}
+                      {visibleCols.m3 && <td className={`px-3 py-2 text-right ${fund.return_3m.startsWith("-") ? "text-red-600" : fund.return_3m === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_3m}</td>}
+                      {visibleCols.m6 && <td className={`px-3 py-2 text-right ${fund.return_6m.startsWith("-") ? "text-red-600" : fund.return_6m === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_6m}</td>}
+                      {visibleCols.y1 && <td className={`px-3 py-2 text-right ${fund.return_1y.startsWith("-") ? "text-red-600" : fund.return_1y === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_1y}</td>}
+                      {visibleCols.y3 && <td className={`px-3 py-2 text-right ${fund.return_3y.startsWith("-") ? "text-red-600" : fund.return_3y === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_3y}</td>}
+                      {visibleCols.y5 && <td className={`px-3 py-2 text-right ${fund.return_5y.startsWith("-") ? "text-red-600" : fund.return_5y === "N/A" ? "text-gray-300" : "text-emerald-600"}`}>{fund.return_5y}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -345,11 +362,11 @@ export default function AnalyticsView() {
 
         {/* CHARTS CONTAINER */}
         {hasSearched && !isLoading && data.length > 0 && (showBarChart || showLineChart) && (
-          <div className={`flex flex-col gap-3 ${showTable ? 'xl:w-1/2' : 'w-full'}`}>
+          <div className={`flex flex-col gap-3 overflow-y-auto ${showTable ? 'xl:w-1/2' : 'w-full'}`}>
             
             {/* BAR CHART */}
             {showBarChart && (
-              <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col h-56">
+              <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col shrink-0 h-56">
                 <h3 className="text-xs font-bold text-gray-800 mb-2">{activeMetricLabel} Return Comparison (Top 10)</h3>
                 <div className="flex-1 w-full min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
@@ -367,7 +384,7 @@ export default function AnalyticsView() {
 
             {/* LINE CHART */}
             {showLineChart && (
-              <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col h-56">
+              <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-2xs flex flex-col shrink-0 h-56">
                 <h3 className="text-xs font-bold text-gray-800 mb-2">Current NAV Snapshot</h3>
                 <div className="flex-1 w-full min-h-0">
                   <ResponsiveContainer width="100%" height="100%">
