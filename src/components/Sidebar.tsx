@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 interface SidebarProps {
   currentTab: string;
   setCurrentTab: (tab: "home" | "download" | "analytics" | "settings") => void;
@@ -22,8 +23,11 @@ export default function Sidebar({ currentTab, setCurrentTab, isCollapsed, setIsC
             <h1 className="text-lg font-bold text-gray-900 tracking-tight whitespace-nowrap">NAV Engine</h1>
           </div>
         )}
-        <button onClick={() => setIsCollapsed(!isCollapsed)} className="text-gray-400 hover:text-blue-600 p-1 rounded transition-colors mx-auto">
-          {isCollapsed ? "?" : "?"}
+        <button 
+          onClick={() => setIsCollapsed(!isCollapsed)} 
+          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-gray-100 transition-colors"
+          aria-label="Toggle Sidebar">
+          {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
         </button>
       </div>
       
