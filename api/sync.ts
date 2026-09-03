@@ -50,7 +50,6 @@ export default async function handler(req: any, res: any) {
     const lines = text.split(/\r?\n/);
     console.log(`[Sync Debug] Total raw lines to process: ${lines.length}`);
 
-    // LOG 1: Print first 5 non-empty raw data lines from AMFI
     const rawSampleLines = lines.map(l => l.trim()).filter(l => l.length > 0).slice(0, 5);
     console.log(`[Sync Debug] First 5 raw lines received from AMFI:\n`, JSON.stringify(rawSampleLines, null, 2));
 
@@ -68,12 +67,9 @@ export default async function handler(req: any, res: any) {
     const summary: Record<string, number> = {};
     const insertStatements: any[] = [];
 
-    // Case-insensitive month mapping + numeric string support
     const monthsMap: Record<string, string> = { 
       jan:"01", feb:"02", mar:"03", apr:"04", may:"05", jun:"06", 
-      jul:"07", aug:"08", sep:"09", oct:"10", nov:"11", dec:"12",
-      "01":"01", "02":"02", "03":"03", "04":"04", "05":"05", "06":"06",
-      "07":"07", "08":"08", "09":"09", "10":"10", "11":"11", "12":"12"
+      jul:"07", aug:"08", sep:"09", oct:"10", nov:"11", dec:"12"
     };
 
     let skippedLinesCount = 0;
@@ -83,12 +79,12 @@ export default async function handler(req: any, res: any) {
       if (!trimmed) continue;
 
       const parts = trimmed.split(";");
-      // Allow flexible column lengths (at least 5 parts)
-      if (parts.length >= 5 && /^\d+$/.test(parts[0].trim())) {
+      // Validate line has schema code as first element and at least 8 semicolon columns
+      if (parts.length >= 8 && /^\d+$/.test(parts[0].trim())) {
         const schemeCode = parseInt(parts[0].trim(), 10);
         const schemeName = parts[1]?.trim() || "Unknown Scheme";
-        const rawNav = parts[4]?.trim();
-        const rawDate = (parts[7] || parts[parts.length - 1])?.trim();
+        const rawNav = parts[6]?.trim();  // Index 6 is Net Asset Value
+        const rawDate = parts[7]?.trim(); // Index 7 is Date
 
         if (rawNav && rawNav !== "N.A." && rawNav !== "-") {
           const sanitizedNav = rawNav.replace(/,/g, '').trim();
@@ -129,7 +125,6 @@ export default async function handler(req: any, res: any) {
 
     console.log(`[Sync Debug] Skipped numeric lines (invalid date/NAV): ${skippedLinesCount}`);
 
-    // LOG 2: Print first 3 parsed statements before database execution
     if (insertStatements.length > 0) {
       console.log(`[Sync Debug] First 3 parsed statements for Turso:\n`, JSON.stringify(insertStatements.slice(0, 3), null, 2));
     } else {
