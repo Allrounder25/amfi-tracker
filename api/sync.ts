@@ -50,6 +50,10 @@ export default async function handler(req: any, res: any) {
     const lines = text.split(/\r?\n/);
     console.log(`[Sync Debug] Total raw lines to process: ${lines.length}`);
 
+    // LOG 1: Print first 5 non-empty raw data lines from AMFI
+    const rawSampleLines = lines.map(l => l.trim()).filter(l => l.length > 0).slice(0, 5);
+    console.log(`[Sync Debug] First 5 raw lines received from AMFI:\n`, JSON.stringify(rawSampleLines, null, 2));
+
     const client = getDb();
     
     await client.execute(`
@@ -64,47 +68,72 @@ export default async function handler(req: any, res: any) {
     const summary: Record<string, number> = {};
     const insertStatements: any[] = [];
 
+    // Case-insensitive month mapping + numeric string support
     const monthsMap: Record<string, string> = { 
-      Jan:"01", Feb:"02", Mar:"03", Apr:"04", May:"05", Jun:"06", 
-      Jul:"07", Aug:"08", Sep:"09", Oct:"10", Nov:"11", Dec:"12" 
+      jan:"01", feb:"02", mar:"03", apr:"04", may:"05", jun:"06", 
+      jul:"07", aug:"08", sep:"09", oct:"10", nov:"11", dec:"12",
+      "01":"01", "02":"02", "03":"03", "04":"04", "05":"05", "06":"06",
+      "07":"07", "08":"08", "09":"09", "10":"10", "11":"11", "12":"12"
     };
+
+    let skippedLinesCount = 0;
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
       const parts = trimmed.split(";");
-      if (parts.length === 8 && /^\d+$/.test(parts[0])) {
-        const schemeCode = parseInt(parts[0], 10);
-        const schemeName = parts[1];
-        const rawNav = parts[4];
-        const rawDate = parts[7];
+      // Allow flexible column lengths (at least 5 parts)
+      if (parts.length >= 5 && /^\d+$/.test(parts[0].trim())) {
+        const schemeCode = parseInt(parts[0].trim(), 10);
+        const schemeName = parts[1]?.trim() || "Unknown Scheme";
+        const rawNav = parts[4]?.trim();
+        const rawDate = (parts[7] || parts[parts.length - 1])?.trim();
 
         if (rawNav && rawNav !== "N.A." && rawNav !== "-") {
-          // Remove commas and sanitize float parsing
           const sanitizedNav = rawNav.replace(/,/g, '').trim();
           const navValue = parseFloat(sanitizedNav);
           
-          // Ensure navValue is a valid finite number before inserting into Turso
           if (!Number.isFinite(navValue)) {
+            skippedLinesCount++;
             continue;
           }
 
-          const dateParts = rawDate.split("-");
-          if (dateParts.length === 3 && monthsMap[dateParts[1]]) {
-            const isoDate = `${dateParts[2]}-${monthsMap[dateParts[1]]}-${dateParts[0].padStart(2, '0')}`;
-            
-            insertStatements.push({
-              sql: "INSERT OR IGNORE INTO nav_history (scheme_code, scheme_name, nav, date) VALUES (?, ?, ?, ?)",
-              args: [schemeCode, schemeName, navValue, isoDate]
-            });
+          if (rawDate) {
+            const dateParts = rawDate.split("-");
+            if (dateParts.length === 3) {
+              const monthKey = dateParts[1].trim().toLowerCase();
+              const isoMonth = monthsMap[monthKey];
 
-            const amc = schemeName.split(" ")[0] || schemeName;
-            summary[amc] = (summary[amc] || 0) + 1;
-            rowsAdded++;
+              if (isoMonth) {
+                const day = dateParts[0].trim().padStart(2, '0');
+                const year = dateParts[2].trim();
+                const isoDate = `${year}-${isoMonth}-${day}`;
+
+                insertStatements.push({
+                  sql: "INSERT OR IGNORE INTO nav_history (scheme_code, scheme_name, nav, date) VALUES (?, ?, ?, ?)",
+                  args: [schemeCode, schemeName, navValue, isoDate]
+                });
+
+                const amc = schemeName.split(" ")[0] || schemeName;
+                summary[amc] = (summary[amc] || 0) + 1;
+                rowsAdded++;
+                continue;
+              }
+            }
           }
         }
+        skippedLinesCount++;
       }
+    }
+
+    console.log(`[Sync Debug] Skipped numeric lines (invalid date/NAV): ${skippedLinesCount}`);
+
+    // LOG 2: Print first 3 parsed statements before database execution
+    if (insertStatements.length > 0) {
+      console.log(`[Sync Debug] First 3 parsed statements for Turso:\n`, JSON.stringify(insertStatements.slice(0, 3), null, 2));
+    } else {
+      console.warn(`[Sync Debug] Warning: 0 statements parsed from raw data.`);
     }
 
     console.log(`[Turso Sync] Inserting ${insertStatements.length} valid statements in chunked batches...`);
