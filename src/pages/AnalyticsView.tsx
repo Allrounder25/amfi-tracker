@@ -264,6 +264,7 @@ export default function AnalyticsView() {
               onChange={(date: Date | null) => setFromDate(date ? formatDateStr(date) : "")}
               dateFormat="yyyy-MM-dd"
               placeholderText="Select Date"
+              popperClassName="!z-50"
               className="bg-gray-50 border border-gray-300 px-2 py-1 rounded text-xs outline-none w-28"
               dayClassName={(date) =>
                 scrapedDates.has(formatDateStr(date))
@@ -277,6 +278,7 @@ export default function AnalyticsView() {
               onChange={(date: Date | null) => setToDate(date ? formatDateStr(date) : "")}
               dateFormat="yyyy-MM-dd"
               placeholderText="Select Date"
+              popperClassName="!z-50"
               className="bg-gray-50 border border-gray-300 px-2 py-1 rounded text-xs outline-none w-28"
               dayClassName={(date) =>
                 scrapedDates.has(formatDateStr(date))
