@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { usePreferences } from "../store/usePreferences";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 interface AmfiOption { value: string; label: string; }
 interface SyncProgress {
@@ -28,6 +30,31 @@ export default function DownloadView() {
 
   const [recoveryData, setRecoveryData] = useState<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const [scrapedDates, setScrapedDates] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const fetchScrapedDates = async () => {
+      try {
+        const response = await fetch('/api/scraped-dates');
+        if (response.ok) {
+          const data = await response.json();
+          setScrapedDates(new Set(data.dates));
+        }
+      } catch (err) {
+        console.error("Failed to fetch scraped dates", err);
+      }
+    };
+    
+    if (!isSyncing) {
+      fetchScrapedDates();
+    }
+  }, [isSyncing]);
+
+  const formatDateStr = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().split('T')[0];
+  };
 
   // Load permanent saved inputs and summary on startup
   useEffect(() => {
@@ -224,11 +251,33 @@ export default function DownloadView() {
       <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm flex items-end gap-4">
         <div className="flex flex-col gap-2 w-36">
           <label className="text-xs text-gray-600 font-medium">From Date</label>
-          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} disabled={isSyncing} className="bg-gray-50 border border-gray-300 px-3 py-2 rounded text-sm text-gray-800 disabled:text-gray-400 focus:outline-none" />
+          <DatePicker
+            selected={fromDate ? new Date(fromDate) : null}
+            onChange={(date: Date | null) => setFromDate(date ? formatDateStr(date) : "")}
+            disabled={isSyncing}
+            dateFormat="yyyy-MM-dd"
+            className="bg-gray-50 border border-gray-300 px-3 py-2 rounded text-sm text-gray-800 disabled:bg-gray-200 focus:outline-none w-full"
+            dayClassName={(date) => 
+              scrapedDates.has(formatDateStr(date)) 
+                ? "bg-emerald-100 text-emerald-800 font-bold rounded-full hover:bg-emerald-200" 
+                : ""
+            }
+          />
         </div>
         <div className="flex flex-col gap-2 w-36">
           <label className="text-xs text-gray-600 font-medium">To Date</label>
-          <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} disabled={isSyncing} className="bg-gray-50 border border-gray-300 px-3 py-2 rounded text-sm text-gray-800 disabled:text-gray-400 focus:outline-none" />
+          <DatePicker
+            selected={toDate ? new Date(toDate) : null}
+            onChange={(date: Date | null) => setToDate(date ? formatDateStr(date) : "")}
+            disabled={isSyncing}
+            dateFormat="yyyy-MM-dd"
+            className="bg-gray-50 border border-gray-300 px-3 py-2 rounded text-sm text-gray-800 disabled:bg-gray-200 focus:outline-none w-full"
+            dayClassName={(date) => 
+              scrapedDates.has(formatDateStr(date)) 
+                ? "bg-emerald-100 text-emerald-800 font-bold rounded-full hover:bg-emerald-200" 
+                : ""
+            }
+          />
         </div>
         
         <div className="flex flex-col gap-2 flex-1">
