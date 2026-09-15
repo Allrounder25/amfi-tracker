@@ -56,8 +56,15 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ success: true, jobId: newId });
       }
 
-      // Action: Claim next pending job atomically
       if (action === 'claim_next') {
+
+        await client.execute(`
+          UPDATE sync_queue 
+          SET status = 'pending' 
+          WHERE status = 'in_progress' 
+            AND updated_at <= datetime('now', '-5 minute');
+        `);
+
         const pending = await client.execute(
           "SELECT * FROM sync_queue WHERE status = 'pending' ORDER BY id ASC LIMIT 1;"
         );
@@ -68,7 +75,6 @@ export default async function handler(req: any, res: any) {
 
         const job = pending.rows[0];
         
-        // Claim job
         await client.execute({
           sql: "UPDATE sync_queue SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending';",
           args: [job.id]
@@ -77,7 +83,6 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ job });
       }
 
-      // Action: Update live progress for a job
       if (action === 'update_progress') {
         await client.execute({
           sql: `UPDATE sync_queue 
