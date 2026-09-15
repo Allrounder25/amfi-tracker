@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { usePreferences } from "../store/usePreferences";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 interface FundPerformance {
   scheme_code: number; scheme_name: string; current_nav: number;
@@ -43,6 +45,14 @@ export default function AnalyticsView() {
 
   const isSyncActive = localStorage.getItem("amfi_sync_recovery") !== null;
 
+  const [scrapedDates, setScrapedDates] = useState<Set<string>>(new Set());
+
+
+  const formatDateStr = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().split('T')[0];
+  };
+
   // Helper: Auto-detect available return data and toggle columns
   const autoDetectColumns = (fundData: FundPerformance[]) => {
     const newCols = { w1: false, m1: false, m3: false, m6: false, y1: false, y3: false, y5: false };
@@ -57,6 +67,20 @@ export default function AnalyticsView() {
     });
     setVisibleCols(newCols);
   };
+  useEffect(() => {
+    const fetchScrapedDates = async () => {
+      try {
+        const response = await fetch('/api/scraped-dates');
+        if (response.ok) {
+          const data = await response.json();
+          setScrapedDates(new Set(data.dates));
+        }
+      } catch (err) {
+        console.error("Error fetching scraped dates", err);
+      }
+    };
+    fetchScrapedDates();
+  }, []);
 
   useEffect(() => {
     async function initFilters() {
@@ -235,9 +259,31 @@ export default function AnalyticsView() {
           <h2 className="text-lg font-bold text-gray-900 tracking-tight">Analytics</h2>
           <span className="text-gray-300">|</span>
           <div className="flex items-center gap-2">
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-gray-50 border border-gray-300 px-2 py-1 rounded text-xs outline-none" />
+            <DatePicker
+              selected={fromDate ? new Date(fromDate) : null}
+              onChange={(date: Date | null) => setFromDate(date ? formatDateStr(date) : "")}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Select Date"
+              className="bg-gray-50 border border-gray-300 px-2 py-1 rounded text-xs outline-none w-28"
+              dayClassName={(date) =>
+                scrapedDates.has(formatDateStr(date))
+                  ? "bg-emerald-100 text-emerald-800 font-bold rounded-full hover:bg-emerald-200"
+                  : ""
+              }
+            />
             <span className="text-xs text-gray-400">to</span>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-gray-50 border border-gray-300 px-2 py-1 rounded text-xs outline-none" />
+            <DatePicker
+              selected={toDate ? new Date(toDate) : null}
+              onChange={(date: Date | null) => setToDate(date ? formatDateStr(date) : "")}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Select Date"
+              className="bg-gray-50 border border-gray-300 px-2 py-1 rounded text-xs outline-none w-28"
+              dayClassName={(date) =>
+                scrapedDates.has(formatDateStr(date))
+                  ? "bg-emerald-100 text-emerald-800 font-bold rounded-full hover:bg-emerald-200"
+                  : ""
+              }
+            />
           </div>
 
           {/* Mutual Fund Dropdown */}
