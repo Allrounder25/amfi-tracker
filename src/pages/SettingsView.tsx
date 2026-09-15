@@ -1,5 +1,8 @@
-import { useState } from "react";
+// SettingsView.tsx
+import { useState, useEffect } from "react";
 import { usePreferences } from "../store/usePreferences";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 export default function SettingsView() {
   const { config, setConfig, savePreferences, isLoading } = usePreferences();
@@ -9,17 +12,127 @@ export default function SettingsView() {
   const [showDeleteWarning, setShowDeleteWarning] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Check if a sync process is currently running in the browser
+  // New states for overlap calculation
+  const [scrapedDates, setScrapedDates] = useState<Set<string>>(new Set());
+  const [queueJobs, setQueueJobs] = useState<any[]>([]);
+
   const isSyncActive = localStorage.getItem("amfi_sync_recovery") !== null;
+
+  // Helper date formatter
+  const formatDateStr = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().split('T')[0];
+  };
+
+  // Fetch current database and queue status
+  useEffect(() => {
+    Promise.all([fetch('/api/scraped-dates'), fetch('/api/queue')])
+      .then(async ([datesRes, queueRes]) => {
+        if (datesRes.ok) {
+          const data = await datesRes.json();
+          setScrapedDates(new Set(data.dates));
+        }
+        if (queueRes.ok) {
+          const qData = await queueRes.json();
+          setQueueJobs(qData.jobs || []);
+        }
+      })
+      .catch(err => console.error("Failed to load global state", err));
+  }, []);
+
+  const processAutomation = async (currentConfig: any) => {
+    if (!currentConfig.auto_sync_start_date) return;
+
+    // 1. Calculate Target Date (Today - buffer_days)
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - currentConfig.buffer_days);
+    
+    // 2. Map all currently queued/active dates from other users
+    const activeDates = new Set<string>();
+    queueJobs.filter(j => j.status === 'pending' || j.status === 'in_progress').forEach(job => {
+      let curr = new Date(job.from_date);
+      const end = new Date(job.to_date);
+      while(curr <= end) {
+        activeDates.add(formatDateStr(curr));
+        curr.setDate(curr.getDate() + 1);
+      }
+    });
+
+    // 3. Find missing dates in the local database
+    const missingDates: string[] = [];
+    let checkDate = new Date(currentConfig.auto_sync_start_date);
+    
+    while(checkDate <= targetDate) {
+      const dStr = formatDateStr(checkDate);
+      if (!scrapedDates.has(dStr)) {
+        missingDates.push(dStr);
+      }
+      checkDate.setDate(checkDate.getDate() + 1);
+    }
+
+    if (missingDates.length === 0) return; // Database is fully caught up
+
+    // 4. Multi-user Overlap Check
+    const strictlyMissing = missingDates.filter(d => !activeDates.has(d));
+
+    if (strictlyMissing.length === 0) {
+      alert("All missing data is already currently in the global queue. Please wait for the process to finish.");
+      return;
+    } 
+
+    if (strictlyMissing.length < missingDates.length) {
+      const proceed = window.confirm(`Part of this timeframe is already executing in the queue. Recommend fetching only the remaining ${strictlyMissing.length} days. Proceed?`);
+      if (!proceed) return;
+    }
+
+    // 5. Convert missing dates into ranges and enqueue
+    await enqueueMissingRanges(strictlyMissing);
+  };
+
+  const enqueueMissingRanges = async (dates: string[]) => {
+    // Group adjacent days into contiguous chunks to avoid spamming the queue
+    dates.sort();
+    let rangeStart = dates[0];
+    let prevDate = new Date(dates[0]);
+
+    const postJob = async (start: string, end: string) => {
+      await fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enqueue', fromDate: start, toDate: end, mfCode: "", typeCode: "" })
+      });
+    };
+
+    for (let i = 1; i < dates.length; i++) {
+      const currDate = new Date(dates[i]);
+      const diffTime = Math.abs(currDate.getTime() - prevDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 1) {
+        await postJob(rangeStart, formatDateStr(prevDate));
+        rangeStart = dates[i];
+      }
+      prevDate = currDate;
+    }
+    await postJob(rangeStart, formatDateStr(prevDate)); // Push final chunk
+    
+    alert("Missing data has been added to the Activity Log for background extraction.");
+  };
 
   const handleSaveSettings = async () => {
     if (!config) return;
     setIsSaving(true);
     const success = await savePreferences(config);
-    setSaveMessage(success ? "Settings saved successfully to browser storage." : "Error saving settings.");
+    
+    if (success) {
+      await processAutomation(config);
+    }
+
+    setSaveMessage(success ? "Settings saved successfully." : "Error saving settings.");
     setIsSaving(false);
     setTimeout(() => setSaveMessage(""), 3000);
   };
+ 
   
   const handleDeleteDatabase = async () => {
     setIsDeleting(true);
@@ -74,15 +187,37 @@ export default function SettingsView() {
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-4">
             <h3 className="font-semibold text-gray-800">Sync Pipeline Configurations</h3>
-            <p className="text-xs text-gray-500">Set background lookback days for holiday coverage overlapping calculations.</p>
-            <div className="flex items-center gap-4 mt-2">
-              <input 
-                type="number" 
-                value={config.buffer_days} 
-                onChange={e => setConfig({...config, buffer_days: parseInt(e.target.value, 10) || 0})} 
-                className="w-24 px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-blue-500 shadow-inner" 
-              />
-              <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Recommended: 3 Days</span>
+            
+            <div>
+              <p className="text-xs text-gray-500">Set background lookback days for holiday coverage overlapping calculations.</p>
+              <div className="flex items-center gap-4 mt-2">
+                <input 
+                  type="number" 
+                  value={config.buffer_days} 
+                  onChange={e => setConfig({...config, buffer_days: parseInt(e.target.value, 10) || 0})} 
+                  className="w-24 px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-blue-500 shadow-inner" 
+                />
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Recommended: 3 Days</span>
+              </div>
+            </div>
+
+            {/* New Automated Starting Date - Placed INSIDE the card container */}
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs text-gray-500">Define the starting threshold date. Saving will automatically queue extraction for missing dates up to today.</p>
+              <div className="flex items-center gap-4 mt-2">
+                <DatePicker
+                  selected={config.auto_sync_start_date ? new Date(config.auto_sync_start_date) : null}
+                  onChange={(date: Date | null) => setConfig({...config, auto_sync_start_date: date ? formatDateStr(date) : ""})}
+                  dateFormat="yyyy-MM-dd"
+                  placeholderText="Select start date"
+                  className="w-32 px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-blue-500 shadow-inner"
+                  dayClassName={(date) =>
+                    scrapedDates.has(formatDateStr(date))
+                      ? "bg-emerald-100 text-emerald-800 font-bold rounded-full hover:bg-emerald-200"
+                      : ""
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>

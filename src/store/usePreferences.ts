@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 
 export interface AppConfig {
   buffer_days: number;
+  auto_sync_start_date: string;
   sync_from_date: string;
   sync_to_date: string;
   sync_mf: string;
@@ -19,6 +20,7 @@ export interface AppConfig {
 
 const DEFAULT_CONFIG: AppConfig = {
   buffer_days: 3,
+  auto_sync_start_date: "",
   sync_from_date: "", sync_to_date: "", sync_mf: "", sync_tp: "",
   last_summary: {},
   dashboard_cache: { total_records: 0, tracked_funds: 0, last_synced: "Never", records_this_week: 0 },
